@@ -1,14 +1,13 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import filters, viewsets
+from rest_framework import filters, viewsets, mixins
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import (IsAuthenticatedOrReadOnly,
                                         IsAuthenticated)
 
 from posts.models import Comment, Group, Post
-
 from .permissions import IsAuthorOrReadOnlyPermission
-from .serializers import (PostSerializer, GroupSerializer, CommentSerializer,
-                          FollowSerializer)
+from .serializers import (PostSerializer, GroupSerializer,
+                          CommentSerializer, FollowSerializer)
 
 
 class PostViewSet(viewsets.ModelViewSet):
@@ -16,7 +15,9 @@ class PostViewSet(viewsets.ModelViewSet):
 
     queryset = Post.objects.all()
     serializer_class = PostSerializer
-    permission_classes = (IsAuthorOrReadOnlyPermission,)
+    permission_classes = (IsAuthenticatedOrReadOnly,
+                          IsAuthorOrReadOnlyPermission,
+                          )
     pagination_class = LimitOffsetPagination
 
     def perform_create(self, serializer):
@@ -35,18 +36,23 @@ class CommentViewSet(viewsets.ModelViewSet):
     """Комментарии"""
 
     serializer_class = CommentSerializer
-    permission_classes = (IsAuthorOrReadOnlyPermission,)
+    permission_classes = (IsAuthenticatedOrReadOnly,
+                          IsAuthorOrReadOnlyPermission,
+                          )
+
+    def get_post(self):
+        return get_object_or_404(Post, pk=self.kwargs.get('post_id'))
 
     def get_queryset(self):
-        post_id = get_object_or_404(Post, pk=self.kwargs.get('post_id'))
-        return Comment.objects.filter(post=post_id)
+        return self.get_post().comments.all()
 
     def perform_create(self, serializer):
-        post = get_object_or_404(Post, pk=self.kwargs.get('post_id'))
-        serializer.save(post=post, author=self.request.user)
+        serializer.save(post=self.get_post(), author=self.request.user)
 
 
-class FollowViewSet(viewsets.ModelViewSet):
+class FollowViewSet(mixins.CreateModelMixin,
+                    mixins.ListModelMixin,
+                    viewsets.GenericViewSet):
     """Подписчики"""
 
     serializer_class = FollowSerializer
